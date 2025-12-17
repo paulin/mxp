@@ -1,6 +1,7 @@
 import express from 'express'
 import swaggerUi from 'swagger-ui-express'
 import cors from 'cors'
+import cookieParser from 'cookie-parser'
 import { join } from 'path'
 import { readFileSync, realpathSync } from 'fs'
 import { createApiRouter } from './api/index.js'
@@ -25,15 +26,38 @@ const loadOpenApiSpec = () => {
 
 export const startServer = async ({
   port = process.env.PORT != null ? parseInt(process.env.PORT) : 3001,
-  storageFolder = process.env.STORAGE_FOLDER || join(process.cwd(), 'expedition'),
+  storageFolder = process.env.STORAGE_FOLDER || join(process.cwd(), '.mxp'),
   autoOpenInBrowser = false
 }: ServerOptions = {}) => {
   const app = express()
 
   app.use(cors())
   app.use(express.json())
+  app.use(cookieParser())
 
-  app.use('/images', express.static(join(storageFolder, 'images')))
+  // Middleware to handle storage folder from query parameter or cookie
+  app.use((req, res, next) => {
+    const storageFolderParam = req.query.storageFolder as string | undefined
+    if (storageFolderParam) {
+      // Store in cookie for subsequent requests
+      res.cookie('mxp_storage_folder', storageFolderParam, { maxAge: 365 * 24 * 60 * 60 * 1000 })
+      // Store in request for use in API routes
+      req.storageFolder = storageFolderParam
+    } else if (req.cookies?.mxp_storage_folder) {
+      // Use cookie if no query param
+      req.storageFolder = req.cookies.mxp_storage_folder
+    } else {
+      // Use default
+      req.storageFolder = storageFolder
+    }
+    next()
+  })
+
+  // Serve images from the current storage folder (determined by middleware)
+  app.use('/images', (req, res, next) => {
+    const currentStorageFolder = req.storageFolder || storageFolder
+    express.static(join(currentStorageFolder, 'images'))(req, res, next)
+  })
 
   app.use('/api', await createApiRouter({ storageFolder }))
 
