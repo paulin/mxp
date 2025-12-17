@@ -231,9 +231,26 @@ export const createApiRouter = async (config: ApiConfig): Promise<Router> => {
         })
       )
       
+      // Calculate parent path - allow going up from storageParentDir, but not from root or home if we're at the limit
+      let parentPath: string | null = null
+      if (resolvedPath !== '/' && resolvedPath !== homeDir) {
+        const calculatedParent = path.dirname(resolvedPath)
+        // Only prevent going up if we're at the root level or if parent would be outside allowed area
+        if (calculatedParent !== resolvedPath) {
+          // Check if parent is still within allowed area
+          const parentIsWithinHome = calculatedParent.startsWith(homeDir)
+          const parentIsWithinStorageParent = calculatedParent.startsWith(storageParentDir) || storageParentDir.startsWith(calculatedParent)
+          const parentIsRootLevel = calculatedParent === '/' || calculatedParent.split(path.sep).length <= 2
+          
+          if (parentIsWithinHome || parentIsWithinStorageParent || parentIsRootLevel) {
+            parentPath = calculatedParent
+          }
+        }
+      }
+      
       res.json({
         currentPath: resolvedPath,
-        parentPath: resolvedPath !== '/' && resolvedPath !== homeDir && resolvedPath !== storageParentDir ? path.dirname(resolvedPath) : null,
+        parentPath: parentPath,
         directories: directoriesWithMxp,
         currentIsMxpFolder: currentIsMxpFolder,
         mxpPath: mxpPath

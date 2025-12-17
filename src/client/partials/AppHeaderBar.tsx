@@ -381,30 +381,39 @@ export const AppHeaderBar: React.FC<AppHeaderBarProps> = ({
                   </Box>
                 )}
                 <List sx={{ maxHeight: 400, overflow: 'auto', border: '1px solid #e0e0e0', borderRadius: 1 }}>
-                  {browsePath && (
-                    <ListItem disablePadding>
-                      <ListItemButton onClick={async () => {
-                        try {
-                          const response = await fetch(`/api/browse?path=${encodeURIComponent(browsePath)}`)
-                          if (response.ok) {
-                            const data = await response.json()
-                            if (data.parentPath) {
-                              await loadDirectory(data.parentPath)
-                            } else {
-                              // If no parent path, go to default directory
-                              const defaultDir = await getDefaultBrowseDirectory()
-                              await loadDirectory(defaultDir)
+                  {browsePath && (() => {
+                    // Always show parent button if we're not at root
+                    const pathParts = browsePath.split(/[/\\]/).filter(p => p)
+                    const canGoUp = pathParts.length > 0
+                    
+                    return canGoUp ? (
+                      <ListItem disablePadding>
+                        <ListItemButton onClick={async () => {
+                          try {
+                            const response = await fetch(`/api/browse?path=${encodeURIComponent(browsePath)}`)
+                            if (response.ok) {
+                              const data = await response.json()
+                              if (data.parentPath) {
+                                await loadDirectory(data.parentPath)
+                              } else {
+                                // Fallback: calculate parent manually
+                                const pathParts = browsePath.split(/[/\\]/).filter(p => p)
+                                if (pathParts.length > 0) {
+                                  const parentPath = browsePath.split(/[/\\]/).slice(0, -1).join('/') || '/'
+                                  await loadDirectory(parentPath)
+                                }
+                              }
                             }
+                          } catch (error) {
+                            console.error('Error loading parent:', error)
                           }
-                        } catch (error) {
-                          console.error('Error loading parent:', error)
-                        }
-                      }}>
-                        <ArrowUpward sx={{ mr: 1 }} />
-                        <ListItemText primary=".." secondary="Parent directory" />
-                      </ListItemButton>
-                    </ListItem>
-                  )}
+                        }}>
+                          <ArrowUpward sx={{ mr: 1 }} />
+                          <ListItemText primary=".." secondary="Parent directory" />
+                        </ListItemButton>
+                      </ListItem>
+                    ) : null
+                  })()}
                   {browseDirectories.map((dir) => {
                     const isSelected = selectedFolderPath === dir.path
                     return (
