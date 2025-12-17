@@ -206,6 +206,17 @@ export const AppHeaderBar: React.FC<AppHeaderBarProps> = ({
     }
   }
 
+  const handleSelectCurrentFolder = () => {
+    if (!browsePath) return
+    
+    // Construct the .mxp folder path for the current directory
+    const mxpPath = browsePath.endsWith('/.mxp') || browsePath.endsWith('\\\.mxp') 
+      ? browsePath 
+      : `${browsePath}${browsePath.endsWith('/') || browsePath.endsWith('\\') ? '' : '/'}.mxp`
+    
+    handleSelectMxpFolder(mxpPath)
+  }
+
   const handleFolderClick = async (dirPath: string, isMxpFolder: boolean) => {
     if (isMxpFolder) {
       // If it's an MXP folder, select it
@@ -377,6 +388,27 @@ export const AppHeaderBar: React.FC<AppHeaderBarProps> = ({
                       sx={{ bgcolor: 'white', color: 'primary.main', '&:hover': { bgcolor: 'grey.100' } }}
                     >
                       Select This Folder
+                    </Button>
+                  </Box>
+                )}
+                {browsePath && !currentIsMxpFolder && (
+                  <Box sx={{ mb: 2, p: 2, bgcolor: 'action.hover', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
+                    <Typography variant="body2" sx={{ mb: 1, fontWeight: 'bold' }}>
+                      Current Folder
+                    </Typography>
+                    <Typography variant="body2" sx={{ mb: 1, fontFamily: 'monospace', fontSize: '12px', wordBreak: 'break-all' }}>
+                      {browsePath}
+                    </Typography>
+                    <Typography variant="caption" sx={{ mb: 1, display: 'block', color: 'text.secondary' }}>
+                      This will add: {browsePath}/{browsePath.endsWith('/') ? '' : '/'}.mxp
+                    </Typography>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      onClick={handleSelectCurrentFolder}
+                      startIcon={<Folder />}
+                    >
+                      Select This Folder as Project
                     </Button>
                   </Box>
                 )}
