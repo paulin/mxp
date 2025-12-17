@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { addProjectPath, getRecentProjects } from '../config/UserConfig.js'
+import { addProjectPath, getRecentProjects, removeProjectPath } from '../config/UserConfig.js'
 import { getFileStore } from './FileStoreCache.js'
 import fs from 'fs/promises'
 import path from 'path'
@@ -136,19 +136,117 @@ export const createApiRouter = async (config: ApiConfig): Promise<Router> => {
     }
   })
 
-  // Add a project path
-  router.post('/projects', async (req, res) => {
+  // Initialize a new .mxp folder with starter files
+  const initializeProjectFolder = async (projectPath: string): Promise<void> => {
+    // Check if .mxp folder exists
+    let needsInit = false
     try {
-      const { path: projectPath, name } = req.body
+      await fs.access(projectPath)
+      // Folder exists, check if it's empty or has files
+      const entries = await fs.readdir(projectPath)
+      if (entries.length === 0) {
+        needsInit = true
+      }
+    } catch {
+      // Folder doesn't exist, create it
+      await fs.mkdir(projectPath, { recursive: true })
+      needsInit = true
+    }
+
+    if (!needsInit) {
+      return // Already initialized
+    }
+
+    // Create subdirectories
+    const mapsDir = path.join(projectPath, 'maps')
+    const waypointsDir = path.join(projectPath, 'waypoints')
+    const usersDir = path.join(projectPath, 'users')
+    const imagesDir = path.join(projectPath, 'images')
+
+    await fs.mkdir(mapsDir, { recursive: true })
+    await fs.mkdir(waypointsDir, { recursive: true })
+    await fs.mkdir(usersDir, { recursive: true })
+    await fs.mkdir(imagesDir, { recursive: true })
+
+    // Create default config file if it doesn't exist
+    const configPath = path.join(projectPath, 'mxp-config.yml')
+    try {
+      await fs.access(configPath)
+    } catch {
+      const defaultConfig = `# Expedition Configuration
+# All fields are optional
+
+# Project title - displayed in the UI header
+projectTitle: New Project
+
+# Work units - used when displaying effort estimates (e.g. hours, days, points)
+workUnits: "hours"
+
+# Icon path - used in the UI header
+iconPath: "/images/expedition-logo-512-alpha-upside-down.png"
+`
+      await fs.writeFile(configPath, defaultConfig)
+    }
+
+    // Initialize FileStore to create root nodes
+    await createFileStore(projectPath)
+  }
+
+  // Initialize endpoint
+  router.post('/projects/initialize', async (req, res) => {
+    try {
+      const { path: projectPath } = req.body
       if (!projectPath) {
         return res.status(400).json({ error: 'Project path is required' })
       }
+      await initializeProjectFolder(projectPath)
+      res.json({ message: 'Project initialized successfully', path: projectPath })
+    } catch (error: any) {
+      console.error('Error initializing project:', error)
+      res.status(500).json({ error: error.message || 'Failed to initialize project' })
+    }
+  })
+
+  // Add a project path
+  router.post('/projects', async (req, res) => {
+    try {
+      const { path: projectPath, name, initialize } = req.body
+      if (!projectPath) {
+        return res.status(400).json({ error: 'Project path is required' })
+      }
+
+      // Initialize the project folder if requested
+      if (initialize) {
+        try {
+          await initializeProjectFolder(projectPath)
+        } catch (error) {
+          console.warn('Failed to initialize project folder:', error)
+          // Continue anyway - the folder might already exist
+        }
+      }
+
       await addProjectPath(projectPath, name)
       const projects = await getRecentProjects()
       res.status(201).json(projects)
     } catch (error) {
       console.error('Error adding project:', error)
       res.status(500).json({ error: 'Failed to add project' })
+    }
+  })
+
+  // Remove a project path (does not delete the folder, just removes from list)
+  router.delete('/projects', async (req, res) => {
+    try {
+      const { path: projectPath } = req.body
+      if (!projectPath) {
+        return res.status(400).json({ error: 'Project path is required' })
+      }
+      await removeProjectPath(projectPath)
+      const projects = await getRecentProjects()
+      res.json(projects)
+    } catch (error) {
+      console.error('Error removing project:', error)
+      res.status(500).json({ error: 'Failed to remove project' })
     }
   })
 

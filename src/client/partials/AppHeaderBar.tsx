@@ -33,7 +33,8 @@ import {
   AddCircle,
   FolderOpen,
   ArrowUpward,
-  Home
+  Home,
+  Close
 } from '@mui/icons-material'
 import type { TreeNode, TreeNodeSet } from '../../TreeNode'
 import { TreeStateMethods } from '../../useApiForState'
@@ -97,12 +98,36 @@ export const AppHeaderBar: React.FC<AppHeaderBarProps> = ({
   const [currentIsMxpFolder, setCurrentIsMxpFolder] = useState(false)
   const [currentMxpPath, setCurrentMxpPath] = useState<string | null>(null)
   const [selectedFolderPath, setSelectedFolderPath] = useState<string | null>(null)
+  const [currentProject, setCurrentProject] = useState<{path: string, name: string} | null>(null)
 
-  // Load recent projects
+  // Load recent projects and current project
   useEffect(() => {
     fetch('/api/projects')
       .then(res => res.json())
       .then(setProjects)
+      .catch(console.error)
+    
+    // Get current project info
+    fetch('/api/storage-info')
+      .then(res => res.json())
+      .then(data => {
+        const storagePath = data.storageFolder
+        // Find matching project
+        fetch('/api/projects')
+          .then(res => res.json())
+          .then((projects: ProjectPath[]) => {
+            const matchingProject = projects.find(p => p.path === storagePath)
+            if (matchingProject) {
+              setCurrentProject({ path: matchingProject.path, name: matchingProject.name })
+            } else {
+              // Extract project name from path
+              const pathParts = storagePath.split(/[/\\]/)
+              const projectName = pathParts[pathParts.length - 2] || pathParts[pathParts.length - 1] || 'Current Project'
+              setCurrentProject({ path: storagePath, name: projectName })
+            }
+          })
+          .catch(console.error)
+      })
       .catch(console.error)
   }, [])
 
@@ -110,12 +135,16 @@ export const AppHeaderBar: React.FC<AppHeaderBarProps> = ({
     if (!newProjectPath) return
     
     try {
+      // Check if folder exists, if not, initialize it
+      const needsInit = true // Always try to initialize new projects
+      
       const response = await fetch('/api/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           path: newProjectPath, 
-          name: newProjectName || undefined 
+          name: newProjectName || undefined,
+          initialize: needsInit
         })
       })
       if (response.ok) {
@@ -124,6 +153,8 @@ export const AppHeaderBar: React.FC<AppHeaderBarProps> = ({
         setAddProjectDialogOpen(false)
         setNewProjectPath('')
         setNewProjectName('')
+        setShowFileBrowser(false)
+        setSelectedFolderPath(null)
       }
     } catch (error) {
       console.error('Error adding project:', error)
@@ -138,10 +169,35 @@ export const AppHeaderBar: React.FC<AppHeaderBarProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path: projectPath })
       })
-      // Reload the page with new storage folder
+      // Reload the page with new storage folder to load the correct MXP files
       window.location.href = `/?storageFolder=${encodeURIComponent(projectPath)}`
     } catch (error) {
       console.error('Error switching project:', error)
+    }
+  }
+
+  const handleRemoveProject = async (projectPath: string, e: React.MouseEvent) => {
+    e.stopPropagation() // Prevent switching to the project when clicking delete
+    if (!confirm(`Remove "${projects.find(p => p.path === projectPath)?.name || projectPath}" from project list?\n\nNote: This will not delete the folder, only remove it from the shortcut list.`)) {
+      return
+    }
+    
+    try {
+      const response = await fetch('/api/projects', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: projectPath })
+      })
+      if (response.ok) {
+        const updated = await response.json()
+        setProjects(updated)
+        // If we removed the current project, reload to default
+        if (currentProject?.path === projectPath) {
+          window.location.href = '/'
+        }
+      }
+    } catch (error) {
+      console.error('Error removing project:', error)
     }
   }
 
@@ -238,6 +294,24 @@ export const AppHeaderBar: React.FC<AppHeaderBarProps> = ({
       <h1 style={styles.title}>
         {config.projectTitle || "MXP: Method Expedition"}
       </h1>
+      {currentProject && (
+        <Box sx={{ 
+          ml: 2, 
+          px: 1.5, 
+          py: 0.5, 
+          bgcolor: 'action.selected', 
+          borderRadius: 1,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1,
+          fontSize: '12px'
+        }}>
+          <Folder sx={{ fontSize: 16, color: 'primary.main' }} />
+          <Typography variant="caption" sx={{ fontWeight: 500 }}>
+            {currentProject.name}
+          </Typography>
+        </Box>
+      )}
       <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
         {/* Project switcher */}
         <Tooltip title="Switch Project">
@@ -277,6 +351,11 @@ export const AppHeaderBar: React.FC<AppHeaderBarProps> = ({
                 handleSwitchProject(project.path)
                 setProjectsMenuAnchor(null)
               }}
+              sx={{
+                '&:hover .delete-project-button': {
+                  opacity: 1
+                }
+              }}
             >
               <ListItemText 
                 primary={project.name}
@@ -290,6 +369,22 @@ export const AppHeaderBar: React.FC<AppHeaderBarProps> = ({
                   }
                 }}
               />
+              <IconButton
+                size="small"
+                className="delete-project-button"
+                onClick={(e) => handleRemoveProject(project.path, e)}
+                sx={{
+                  opacity: 0,
+                  transition: 'opacity 0.2s',
+                  ml: 1,
+                  '&:hover': {
+                    bgcolor: 'error.light',
+                    color: 'error.contrastText'
+                  }
+                }}
+              >
+                <Close sx={{ fontSize: 16 }} />
+              </IconButton>
             </MenuItem>
           ))}
           {projects.length === 0 && (

@@ -69,6 +69,12 @@ export const addProjectPath = async (projectPath: string, name?: string): Promis
   await saveUserConfig(config)
 }
 
+export const removeProjectPath = async (projectPath: string): Promise<void> => {
+  const config = await loadUserConfig()
+  config.projects = config.projects.filter(p => p.path !== projectPath)
+  await saveUserConfig(config)
+}
+
 export const getRecentProjects = async (limit: number = 10): Promise<ProjectPath[]> => {
   const config = await loadUserConfig()
   return config.projects.slice(0, limit)
